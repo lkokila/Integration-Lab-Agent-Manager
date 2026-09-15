@@ -1,0 +1,172 @@
+.app {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.app-header h1 {
+  margin-bottom: 0.1rem;
+}
+
+.muted {
+  color: #666;
+}
+
+.claims-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+}
+
+.claims-table th,
+.claims-table td {
+  text-align: left;
+  padding: 0.6rem 0.8rem;
+  border-bottom: 1px solid #e2e2e2;
+}
+
+.claims-table tbody tr {
+  cursor: pointer;
+}
+
+.claims-table tbody tr:hover {
+  background: #f5f7fa;
+}
+
+.badge {
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.badge-ready {
+  background: #e3f9e5;
+  color: #1b8a2f;
+}
+
+.badge-missing_documents {
+  background: #fff4e0;
+  color: #b56a00;
+}
+
+.badge-decided,
+.badge-paid {
+  background: #e6eefc;
+  color: #1a56c4;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  color: #1a56c4;
+  cursor: pointer;
+  padding: 0;
+  font-size: 0.95rem;
+  margin-bottom: 1rem;
+}
+
+.claim-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 2rem;
+  align-items: start;
+}
+
+@media (max-width: 720px) {
+  .claim-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+dl {
+  display: grid;
+  grid-template-columns: 11rem 1fr;
+  row-gap: 0.4rem;
+  column-gap: 0.6rem;
+}
+
+dt {
+  font-weight: 600;
+  color: #444;
+}
+
+dd {
+  margin: 0;
+}
+
+.workflow-state {
+  font-weight: 600;
+}
+
+.workflow-waiting_for_docs {
+  color: #b56a00;
+}
+
+.workflow-completed {
+  color: #1b8a2f;
+}
+
+.workflow-failed {
+  color: #c62828;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 1.2rem;
+}
+
+.actions button {
+  padding: 0.5rem 0.9rem;
+  border-radius: 6px;
+  border: 1px solid #1a56c4;
+  background: #1a56c4;
+  color: white;
+  cursor: pointer;
+}
+
+.actions button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.timeline {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 0;
+}
+
+.timeline li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.35rem 0;
+}
+
+.timeline-icon {
+  width: 1.2rem;
+  text-align: center;
+}
+
+.timeline-done .timeline-icon {
+  color: #1b8a2f;
+}
+
+.timeline-active .timeline-icon {
+  color: #b56a00;
+}
+
+.timeline-pending .timeline-icon {
+  color: #999;
+}
+
+.timeline-detail {
+  color: #777;
+  font-size: 0.85rem;
+}
+
+.error {
+  color: #c62828;
+}
