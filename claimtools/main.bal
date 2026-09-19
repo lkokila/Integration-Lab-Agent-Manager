@@ -27,7 +27,7 @@ import ballerina/mcp;
 
 configurable int servicePort = 9091;
 
-listener mcp:StreamableHttpListener mcpListener = check new (servicePort);
+listener mcp:StreamableHttpListener mcpListener = new (servicePort);
 
 @mcp:StreamableHttpServiceConfig {
     info: {
@@ -45,7 +45,15 @@ listener mcp:StreamableHttpListener mcpListener = check new (servicePort);
             exposeHeaders: ["Mcp-Session-Id"]
         }
     },
-    sessionMode: mcp:STATELESS
+    sessionMode: mcp:STATELESS,
+    options: {
+        instructions: "Tools for handling a household insurance claim end to end. " +
+                "Call getClaimAssessment first; it returns the claim, the policy, the coverage " +
+                "finding and any blockers in one call. Call getCustomerProfile before deciding " +
+                "or escalating to see the claimant's other claims, open and closed. Tools refuse " +
+                "with a status of REFUSED and a remedy rather than failing - read the remedy and " +
+                "follow it. Never decide a claim that still has outstanding documents."
+    }
 }
 service mcp:StreamableHttpService /mcp on mcpListener {
 
