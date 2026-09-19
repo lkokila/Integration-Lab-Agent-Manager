@@ -34,6 +34,17 @@ listener mcp:StreamableHttpListener mcpListener = new (servicePort);
         name: "Amani General Insurance - Claims Handling",
         version: "1.0.0"
     },
+    // Allows this MCP server to be called cross-origin (e.g. from a browser-based
+    // client on WSO2 Integration Platform Cloud) - CORS is opt-in and otherwise
+    // absent, which is what previously surfaced as a CORS error on Cloud.
+    httpConfig: {
+        cors: {
+            allowOrigins: ["*"],
+            allowMethods: ["GET", "POST", "OPTIONS"],
+            allowHeaders: ["Content-Type", "Authorization", "Mcp-Session-Id"],
+            exposeHeaders: ["Mcp-Session-Id"]
+        }
+    },
     options: {
         instructions: "Tools for handling a household insurance claim end to end. " +
                 "Call getClaimAssessment first; it returns the claim, the policy, the coverage " +
