@@ -45,6 +45,7 @@ listener mcp:StreamableHttpListener mcpListener = new (servicePort);
             exposeHeaders: ["Mcp-Session-Id"]
         }
     },
+    sessionMode: mcp:STATELESS,
     options: {
         instructions: "Tools for handling a household insurance claim end to end. " +
                 "Call getClaimAssessment first; it returns the claim, the policy, the coverage " +
@@ -69,7 +70,7 @@ service mcp:StreamableHttpService /mcp on mcpListener {
                 "prior-claim history, your authority limit, and any blockers preventing a " +
                 "decision. Call this first, and again after documents arrive."
     }
-    remote function getClaimAssessment(string claimId) returns ToolResponse|error {
+    isolated remote function getClaimAssessment(string claimId) returns ToolResponse|error {
         Claim|ToolResponse claim = check fetchClaim(claimId);
         if claim is ToolResponse {
             return claim;
@@ -107,7 +108,7 @@ service mcp:StreamableHttpService /mcp on mcpListener {
                 "before deciding or escalating to see the claimant's full picture - for example, " +
                 "to notice several claims open at once - beyond the single claim in front of you."
     }
-    remote function getCustomerProfile(string customerId) returns ToolResponse|error {
+    isolated remote function getCustomerProfile(string customerId) returns ToolResponse|error {
         Customer|ToolResponse customer = check fetchCustomerProfile(customerId);
         if customer is ToolResponse {
             return customer;
@@ -132,7 +133,7 @@ service mcp:StreamableHttpService /mcp on mcpListener {
         description: "Ask the claimant for specific documents. You choose which documents to " +
                 "request. The claim then waits for the claimant to respond."
     }
-    remote function requestMissingDocuments(string claimId, string[] documents) returns ToolResponse|error {
+    isolated remote function requestMissingDocuments(string claimId, string[] documents) returns ToolResponse|error {
         Claim|ToolResponse claim = check fetchClaim(claimId);
         if claim is ToolResponse {
             return claim;
@@ -160,7 +161,7 @@ service mcp:StreamableHttpService /mcp on mcpListener {
         description: "Record documents the claimant has submitted. Call this when you are told " +
                 "documents have arrived, then call getClaimAssessment again before deciding."
     }
-    remote function recordDocumentsReceived(string claimId, string[] documents) returns ToolResponse|error {
+    isolated remote function recordDocumentsReceived(string claimId, string[] documents) returns ToolResponse|error {
         Claim|ToolResponse claim = check fetchClaim(claimId);
         if claim is ToolResponse {
             return claim;
@@ -187,7 +188,7 @@ service mcp:StreamableHttpService /mcp on mcpListener {
                 "policy does not cover, or an amount above your authority limit. It never throws " +
                 "for a refusal: read the response and follow the remedy."
     }
-    remote function decideClaim(string claimId, Decision decision, string rationale)
+    isolated remote function decideClaim(string claimId, Decision decision, string rationale)
             returns ToolResponse|error {
         Claim|ToolResponse claim = check fetchClaim(claimId);
         if claim is ToolResponse {
@@ -262,7 +263,7 @@ service mcp:StreamableHttpService /mcp on mcpListener {
                 "this when decideClaim refuses because the amount is above your authority, or " +
                 "when cover is genuinely arguable. Gather outstanding documents first."
     }
-    remote function escalateToAdjuster(string claimId, EscalationReason reason, string summary)
+    isolated remote function escalateToAdjuster(string claimId, EscalationReason reason, string summary)
             returns ToolResponse|error {
         Claim|ToolResponse claim = check fetchClaim(claimId);
         if claim is ToolResponse {
@@ -308,7 +309,7 @@ service mcp:StreamableHttpService /mcp on mcpListener {
         description: "Pay an approved claim, net of the policy deductible, and notify the " +
                 "claimant. Refuses unless the claim has already been approved."
     }
-    remote function settleClaim(string claimId) returns ToolResponse|error {
+    isolated remote function settleClaim(string claimId) returns ToolResponse|error {
         Claim|ToolResponse claim = check fetchClaim(claimId);
         if claim is ToolResponse {
             return claim;
