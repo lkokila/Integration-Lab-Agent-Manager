@@ -9,7 +9,15 @@ import ballerinax/amp as _;
 
 configurable string claimsToolsServerUrl = "http://localhost:9091/mcp";
 
-final ai:Wso2ModelProvider claimsChatModel = check ai:getDefaultModelProvider();
+// Model provider settings are plain-string configurables rather than the
+// ai:getDefaultModelProvider() record, so Agent Manager can supply them at
+// deploy time via BAL_CONFIG_VAR_WSO2PROVIDERSERVICEURL /
+// BAL_CONFIG_VAR_WSO2PROVIDERACCESSTOKEN - BAL_CONFIG_VAR_* cannot populate
+// the fields of a record-typed configurable.
+configurable string wso2ProviderServiceUrl = ?;
+configurable string wso2ProviderAccessToken = ?;
+
+final ai:Wso2ModelProvider claimsChatModel = check new (wso2ProviderServiceUrl, wso2ProviderAccessToken);
 
 final ai:McpToolKit claimsToolKit = check new (claimsToolsServerUrl);
 
