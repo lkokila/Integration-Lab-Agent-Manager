@@ -7,7 +7,7 @@
 //              claimant/policyholder lookups
 //
 // Split so each can be demoed, scaled, and reasoned about as a distinct
-// backend even though they currently share one MySQL database (db.bal).
+// backend even though they currently share one in-memory data store (db.bal).
 
 import ballerina/http;
 import ballerina/log;
