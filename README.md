@@ -1,6 +1,6 @@
-# ClaimProcessor
+# ClaimProcessor — Amani General Insurance
 
-A demo insurance claims processing system built for **WSO2Con Africa 2026**. It's made up of a
+A demo claims processing system for **Amani General Insurance**, built for **WSO2Con Africa 2026**. It's made up of a
 MySQL-backed REST API, a durable workflow engine, an MCP server that exposes the same claim
 operations as agent tools, and a React front end that ties it all together.
 
@@ -31,7 +31,8 @@ for claims, customers, and each claim's journey/audit trail.
   | GET | `/claims/{claimId}/journey` | Get a claim's journey/audit steps |
   | POST | `/claims/{claimId}/request-documents` | Mark documents as requested (mock notification) |
   | POST | `/claims/{claimId}/documents-received` | Record documents the customer submitted |
-  | POST | `/claims/{claimId}/decision` | Record an approve/reject decision |
+  | POST | `/claims/{claimId}/decision` | Record an approve/reject decision, with the rationale |
+  | POST | `/claims/{claimId}/escalate` | Hand the claim to a human adjuster (status `ESCALATED`) |
   | POST | `/claims/{claimId}/payment` | Process payment for a decided claim |
   | POST | `/claims/{claimId}/reset` | Reset one of the 3 sample claims back to its seed state |
   | GET | `/customers/{customerId}` | Get a customer's contact details |
@@ -67,11 +68,14 @@ Portal resumes it by delivering an external `documentsReceived` event.
 
   Workflow state is tracked in-memory only (not persisted across restarts).
 
-### 3. `claimmcp` — MCP server for AI agents
+### 3. `claimmcp` — MCP server for AI agents (the REST mirror)
 
 Ballerina MCP server (package `anupama/claimmcp`) built on `ballerina/mcp`, exposing the same
 claim operations as tools an AI agent (e.g. Claude) can call. It's a thin wrapper around
 `claimapi`'s REST API — it holds no state or database connection of its own.
+
+This is the **naive** MCP server, kept deliberately: one tool per REST route, raw records out,
+no rules. Compare it with `claimtools` below.
 
 - **Port:** `9090`, MCP endpoint at `/mcp` (Streamable HTTP transport)
 - **Key file:** `main.bal`
@@ -84,7 +88,48 @@ claim operations as tools an AI agent (e.g. Claude) can call. It's a thin wrappe
   | `submitClaimDecision` | Submit `APPROVED`/`REJECTED` for a claim |
   | `processPayment` | Process payment for an already-decided claim |
 
-### 4. `claimagent` — Durable claims processing agent
+### 4. `claimtools` — Claims handling toolset (the designed MCP server)
+
+Ballerina MCP server (package `anupama/claimtools`), also built on `ballerina/mcp` and also
+backed by nothing but `claimapi`'s REST API — but designed as a **toolset for an agent** rather
+than a projection of the API.
+
+- **Port:** `9091`, MCP endpoint at `/mcp` (Streamable HTTP transport)
+- **Key files:** `main.bal` (the six tools), `assessment.bal` (backend client, blockers, the
+  assessment brief), `reference.bal` (policy/history reference data and the coverage rules),
+  `types.bal` (enums and the response envelope)
+- **Tools exposed:**
+  | Tool | Description |
+  |---|---|
+  | `getClaimAssessment` | The claim, claimant, policy, coverage finding, history, limits and blockers — in one call |
+  | `requestMissingDocuments` | Ask the claimant for specific documents the agent chooses |
+  | `recordDocumentsReceived` | Record documents the claimant submitted |
+  | `decideClaim` | Record `APPROVED`/`REJECTED` with a required rationale, subject to guardrails |
+  | `escalateToAdjuster` | Hand the claim to a human, with a summary |
+  | `settleClaim` | Pay an approved claim, net of the deductible |
+
+Four things make it a toolset rather than a mirror:
+
+1. **One call, one brief.** `getClaimAssessment` composes claim + customer + policy + coverage +
+   history. Four of those facts are returned by no `claimapi` endpoint at all. The naive server
+   needs two tool calls to return strictly less.
+2. **The rules live here.** `claimapi` has no business rules — it will happily pay an undecided
+   claim, or store `decision: "banana"`. `decideClaim` refuses when documents are outstanding,
+   when the policy doesn't cover the loss, or when the payout exceeds the agent's authority
+   limit; `settleClaim` refuses anything not already approved.
+3. **Refusals are results, not errors.** `ballerina/mcp` turns a returned `error` into the string
+   `Tool '<name>' failed unexpectedly.` and logs the real reason server-side
+   (`service_utils.bal:151`) — the model never sees why. So every refusal here is a *successful*
+   response carrying `status: "REFUSED"`, a code, a message, and a `remedy` naming the exact tool
+   and arguments that would unblock it. `error` is reserved for genuine infrastructure failure.
+4. **Typed contracts.** `Decision` and `EscalationReason` are Ballerina enums, so they reach the
+   model as JSON-schema `enum`s — it cannot invent a third decision value.
+
+The policy and claim-history data are in-code reference data (`reference.bal`), standing in for
+the policy administration system a real insurer would call. Nothing about the tools' shape
+depends on where that data comes from.
+
+### 5. `claimagent` — Durable claims processing agent
 
 Ballerina service (package `anupama/claimagent`) that reproduces `claimworkflow`'s exact claim
 flow, but driven by an LLM reasoning loop instead of hand-written control flow: a
@@ -104,9 +149,20 @@ events.documentsReceived`/`workflow:sendData(...)` — but the pause/resume poin
 model's own reasoning rather than fixed workflow code, and the model can also invoke tools in a
 different order or ask follow-up questions if the claim data warrants it.
 
-- **Port:** `8083` (configurable via `servicePort`)
-- **Requires:** `claimmcp` running (its tools are this agent's only way to reach claim data) and a
-  configured WSO2 model provider (see Configuration below)
+The agent can be pointed at **either** MCP server, which is how the two toolsets are compared:
+
+| `agentMode` | `mcpServerUrl` | `servicePort` | System prompt |
+|---|---|---|---|
+| `NAIVE` | `http://localhost:9090/mcp` (`claimmcp`) | 8083 | `NAIVE_INSTRUCTIONS` — a five-step procedure that names the outcome (`decision "APPROVED"`) before the model has seen a single fact |
+| `DESIGNED` | `http://localhost:9091/mcp` (`claimtools`) | 8084 | `DESIGNED_INSTRUCTIONS` — shorter, with no step list and no predetermined outcome |
+
+Only those two config values change; `agent.bal`'s tool wiring is identical for both. The
+designed prompt is *shorter* than the naive one because the procedure moved into the tool
+contracts, where it is enforced rather than suggested.
+
+- **Port:** `8083` (configurable via `servicePort`; use 8084 for a second, `DESIGNED` process)
+- **Requires:** `claimmcp` or `claimtools` running (its tools are this agent's only way to reach
+  claim data) and a configured WSO2 model provider (see Configuration below)
 - **Key files:** `agent.bal` (agent + tool definitions), `control.bal` (control API)
 - **Endpoints:**
   | Method | Path | Description |
@@ -119,7 +175,7 @@ different order or ask follow-up questions if the claim data warrants it.
 
   Agent state is tracked in-memory only (not persisted across restarts).
 
-### 5. `claims-portal` — Claims Portal UI
+### 6. `claims-portal` — Amani General Insurance Claims Portal UI
 
 React 19 + Vite single-page app. Lists claims, shows a claim's detail view with a live journey
 timeline, and drives the durable workflow (start / submit missing documents / reset) via
@@ -175,6 +231,7 @@ CREATE TABLE claims (
   documents_received  JSON NOT NULL,
   missing_documents   JSON NOT NULL,
   decision            VARCHAR(20) DEFAULT NULL,
+  decision_reason     VARCHAR(500) DEFAULT NULL,
   payment_status      VARCHAR(20) NOT NULL DEFAULT 'NOT_STARTED',
   created_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -214,6 +271,17 @@ INSERT INTO claims (claim_id, customer_id, claim_type, description, amount, stat
 (The "Reset claim" action in the portal only works for these three sample claim IDs — the seed
 values above are what it resets back to.)
 
+If you already have a `claims_db` from an earlier run, add the one new column rather than
+recreating the schema:
+
+```sql
+ALTER TABLE claims ADD COLUMN decision_reason VARCHAR(500) DEFAULT NULL AFTER decision;
+```
+
+`decision_reason` stores why a claim was decided the way it was — or, for an escalated claim, the
+summary handed to the human adjuster. `claimapi` accepted a `reason` on `POST /decision` before
+but silently discarded it.
+
 ## Configuration
 
 Each Ballerina package reads its settings from configurable variables, which you supply via a
@@ -231,11 +299,14 @@ dbName = "claims_db"
 All values above are the defaults baked into `config.bal`/`db.bal`, so this file is only needed if
 your MySQL setup differs.
 
-**`claimworkflow/Config.toml`** and **`claimmcp/Config.toml`** (optional — only needed if
-`claimapi` isn't on `localhost:8080`):
+**`claimworkflow/Config.toml`**, **`claimmcp/Config.toml`** and **`claimtools/Config.toml`**
+(optional — only needed if `claimapi` isn't on `localhost:8080`):
 ```toml
 backendUrl = "http://localhost:8080"
 ```
+
+`claimtools` additionally takes `autoApprovalLimit` (default `1000.00`) — the most the agent may
+approve on its own before it has to escalate to a human — and `servicePort` (default `9091`).
 
 **`claimagent/Config.toml`** — copy from `Config.toml.example`, then fill in the WSO2 model
 provider credentials (only piece that isn't a plain default):
@@ -248,12 +319,23 @@ serviceUrl = "<generated>"
 accessToken = "<generated>"
 
 [anupama.claimagent]
+agentMode = "NAIVE"
 mcpServerUrl = "http://localhost:9090/mcp"
 servicePort = 8083
 ```
 Generate the `wso2ProviderConfig` values with the Ballerina VS Code extension: open `claimagent/`
 in VS Code, sign in when prompted, then run **"Ballerina: Configure Default Model Provider"** from
 the Command Palette.
+
+To run both toolsets side by side, make a second copy with `agentMode = "DESIGNED"`,
+`mcpServerUrl = "http://localhost:9091/mcp"` and `servicePort = 8084`, then start one process per
+file. Use `BAL_CONFIG_FILES` rather than `-C`, since these keys sit under a qualified
+`[anupama.claimagent]` section:
+
+```bash
+BAL_CONFIG_FILES=claimagent/Config.naive.toml    bal run claimagent   # 8083 -> claimmcp
+BAL_CONFIG_FILES=claimagent/Config.designed.toml bal run claimagent   # 8084 -> claimtools
+```
 
 **`claims-portal/.env`** (copy from `.env.example`):
 ```
@@ -263,7 +345,7 @@ VITE_WORKFLOW_URL=http://localhost:8082
 
 ## Running everything
 
-Start MySQL first, then the three Ballerina services (each in its own terminal), then the portal.
+Start MySQL first, then the Ballerina services (each in its own terminal), then the portal.
 
 ```bash
 # 1. claimapi — REST backend
@@ -274,15 +356,19 @@ bal run
 cd claimworkflow
 bal run
 
-# 3. claimmcp — MCP server for AI agents (talks to claimapi)
+# 3. claimmcp — naive MCP server, one tool per REST route (talks to claimapi)
 cd claimmcp
 bal run
 
-# 4. claimagent — durable claims processing agent (talks to claimmcp)
+# 4. claimtools — designed MCP toolset (talks to claimapi)
+cd claimtools
+bal run
+
+# 5. claimagent — durable claims processing agent (talks to claimmcp or claimtools)
 cd claimagent
 bal run
 
-# 5. claims-portal — React UI
+# 6. claims-portal — React UI
 cd claims-portal
 npm install
 cp .env.example .env   # first time only
@@ -292,9 +378,9 @@ npm run dev
 Then open the portal at `http://localhost:5173`.
 
 You can also build/run the whole Ballerina workspace at once from the repo root, since
-`Ballerina.toml` declares all four packages:
+`Ballerina.toml` declares all five packages:
 ```bash
-bal build   # builds claimapi, claimmcp, claimworkflow, claimagent
+bal build   # builds claimapi, claimmcp, claimtools, claimworkflow, claimagent
 ```
 (each package still needs to be run individually with `bal run <package>`, since they're separate
 services with different ports)
@@ -305,6 +391,7 @@ services with different ports)
 curl http://localhost:8080/claims/health     # claimapi
 curl http://localhost:8082/workflows/health  # claimworkflow
 curl http://localhost:9090/mcp               # claimmcp (MCP endpoint)
+curl http://localhost:9091/mcp               # claimtools (MCP endpoint)
 curl http://localhost:8083/agents/health     # claimagent
 ```
 
@@ -339,12 +426,38 @@ curl -X POST http://localhost:8083/agents/CLM-1042/documents-received \
 curl http://localhost:8083/agents/CLM-1042/status
 ```
 
-Use `curl -X POST http://localhost:8080/claims/CLM-1042/reset` (via `claimapi`, not `claimagent`)
-to put the sample claim back to its seed state between runs, since `claimagent` only resets its
-own in-memory status tracking, not the underlying claim.
+Reset **both** between runs — `claimagent` only clears its own in-memory status tracking, not the
+underlying claim:
 
-### Connecting an AI agent to `claimmcp`
+```bash
+curl -X POST http://localhost:8080/claims/CLM-1042/reset    # claimapi: the claim itself
+curl -X POST http://localhost:8083/agents/CLM-1042/reset    # claimagent: its tracking
+```
+
+### Comparing the two toolsets
+
+The point of keeping both MCP servers is that the agent code, the backend, and the claim data are
+identical — only the toolset changes. Run the same three claims through each:
+
+| Claim | | `claimmcp` (naive) | `claimtools` (designed) |
+|---|---|---|---|
+| CLM-1041 | 450, covered | approved, paid in full | approved with a cited rationale, settled net of the 100 deductible |
+| CLM-1043 | 800, **excluded peril** | **approved and paid** | **rejected**, quoting clause 7.3 |
+| CLM-1042 | 2500, docs missing | approved and paid after documents arrive | documents gathered, approval refused as above the agent's 1000 authority limit, escalated to a human |
+
+The middle row is the one to dwell on: the naive server doesn't merely mirror REST, it confidently
+pays out a claim the policy does not cover — because its tools gave the model no way to know that
+and no way to refuse.
+
+### Connecting an MCP client directly
 
 Point any MCP-compatible client (e.g. Claude Desktop/Code, via a `streamable-http` MCP server
-entry) at `http://localhost:9090/mcp` to let an agent look up claims/customers and drive decisions
-and payments through natural-language tool calls.
+entry, or MCP Inspector) at either server:
+
+- `http://localhost:9090/mcp` — `claimmcp`, the five REST-shaped tools
+- `http://localhost:9091/mcp` — `claimtools`, the six task-shaped ones
+
+Comparing the two `tools/list` responses side by side shows the difference before a single tool
+runs: the schemas, the descriptions, and the enum-typed `decision` parameter. The guardrails can
+also be demonstrated by hand, with no LLM in the loop — e.g. calling `settleClaim` on a claim that
+hasn't been decided returns a `REFUSED` result naming the tool to call instead.

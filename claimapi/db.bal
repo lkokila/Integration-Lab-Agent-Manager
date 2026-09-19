@@ -28,6 +28,7 @@ type ClaimRow record {|
     json documents_received;
     json missing_documents;
     string? decision;
+    string? decision_reason;
     string payment_status;
     string created_at;
     string updated_at;
@@ -62,6 +63,7 @@ function toClaim(ClaimRow row) returns Claim|error {
         documentsReceived,
         missingDocuments,
         decision: row.decision,
+        decisionReason: row.decision_reason,
         paymentStatus: row.payment_status,
         createdAt: row.created_at,
         updatedAt: row.updated_at
@@ -166,17 +168,39 @@ public function documentsReceived(string claimId, string[] documents) returns er
         SET documents_received = ${mergedJson}, missing_documents = ${emptyMissing}, status = 'READY'
         WHERE claim_id = ${claimId}
     `);
+    // Close out the ACTIVE "Waiting for customer" step opened by requestDocuments,
+    // otherwise the portal timeline shows the claim as still waiting long after
+    // it has been decided and paid.
+    _ = check claimsDb->execute(`
+        UPDATE claim_journey_steps SET status = 'DONE'
+        WHERE claim_id = ${claimId} AND step_name = 'Waiting for customer' AND status = 'ACTIVE'
+    `);
     check addJourneyStep(claimId, "Documents received", "DONE", "Customer submitted the requested documents");
 }
 
-public function submitDecision(string claimId, string decision) returns error? {
+public function submitDecision(string claimId, string decision, string? reason = ()) returns error? {
     sql:ExecutionResult result = check claimsDb->execute(`
-        UPDATE claims SET decision = ${decision}, status = 'DECIDED' WHERE claim_id = ${claimId}
+        UPDATE claims SET decision = ${decision}, decision_reason = ${reason}, status = 'DECIDED'
+        WHERE claim_id = ${claimId}
     `);
     if result.affectedRowCount == 0 {
         return error(string `Claim ${claimId} not found`);
     }
-    check addJourneyStep(claimId, "Claim decision recorded", "DONE", "Decision: " + decision);
+    check addJourneyStep(claimId, "Claim decision recorded", "DONE",
+        reason is () ? "Decision: " + decision : string `Decision: ${decision} - ${reason}`);
+}
+
+// Hands the claim to a human adjuster. Terminal as far as the automated flow is
+// concerned: nothing downstream reads ESCALATED, it simply stops the agent.
+public function escalateClaim(string claimId, string reason, string summary) returns error? {
+    sql:ExecutionResult result = check claimsDb->execute(`
+        UPDATE claims SET status = 'ESCALATED', decision_reason = ${summary} WHERE claim_id = ${claimId}
+    `);
+    if result.affectedRowCount == 0 {
+        return error(string `Claim ${claimId} not found`);
+    }
+    check addJourneyStep(claimId, "Escalated to adjuster", "DONE", string `${reason}: ${summary}`);
+    check addJourneyStep(claimId, "Awaiting adjuster review", "ACTIVE");
 }
 
 public function processPayment(string claimId) returns error? {
@@ -244,6 +268,7 @@ public function resetClaim(string claimId) returns error? {
             documents_received = ${documentsJson},
             missing_documents = ${missingJson},
             decision = NULL,
+            decision_reason = NULL,
             payment_status = 'NOT_STARTED'
         WHERE claim_id = ${claimId}
     `);

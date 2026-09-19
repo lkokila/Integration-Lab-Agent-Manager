@@ -18,6 +18,9 @@ public type Claim record {|
     string[] documentsReceived;
     string[] missingDocuments;
     string? decision;
+    // Why the claim was decided the way it was, or - for an escalated claim -
+    // the summary handed to the human adjuster. Null until one of those happens.
+    string? decisionReason;
     string paymentStatus;
     string createdAt;
     string updatedAt;
@@ -43,6 +46,11 @@ public type DocumentsReceivedRequest record {|
 public type DecisionRequest record {|
     string decision;
     string? reason = ();
+|};
+
+public type EscalateRequest record {|
+    string reason;
+    string summary;
 |};
 
 public type ErrorResponse record {|
