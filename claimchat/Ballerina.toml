@@ -7,3 +7,4 @@ title = "Amani-Claim-Chat-Agent"
 
 [build-options]
 sticky = true
+observabilityIncluded = true

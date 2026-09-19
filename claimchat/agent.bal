@@ -5,6 +5,7 @@
 // recordDocumentsReceived, decideClaim, escalateToAdjuster, and settleClaim.
 
 import ballerina/ai;
+import ballerinax/amp as _;
 
 configurable string claimsToolsServerUrl = "http://localhost:9091/mcp";
 
