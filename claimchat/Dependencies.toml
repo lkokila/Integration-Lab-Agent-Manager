@@ -15,6 +15,7 @@ dependencies = [
 	{org = "ballerina", name = "ai"},
 	{org = "ballerina", name = "http"},
 	{org = "ballerinai", name = "observe"},
+	{org = "ballerinax", name = "ai.openai"},
 	{org = "ballerinax", name = "amp"}
 ]
 modules = [
@@ -402,6 +403,26 @@ modules = [
 
 [[package]]
 org = "ballerinax"
+name = "ai.openai"
+version = "1.4.1"
+dependencies = [
+	{org = "ballerina", name = "ai"},
+	{org = "ballerina", name = "constraint"},
+	{org = "ballerina", name = "http"},
+	{org = "ballerina", name = "jballerina.java"},
+	{org = "ballerina", name = "lang.array"},
+	{org = "ballerina", name = "lang.regexp"},
+	{org = "ballerina", name = "log"},
+	{org = "ballerinax", name = "openai.chat"},
+	{org = "ballerinax", name = "openai.embeddings"},
+	{org = "ballerinax", name = "openai.responses"}
+]
+modules = [
+	{org = "ballerinax", packageName = "ai.openai", moduleName = "ai.openai"}
+]
+
+[[package]]
+org = "ballerinax"
 name = "amp"
 version = "1.1.0"
 dependencies = [
@@ -411,5 +432,44 @@ dependencies = [
 ]
 modules = [
 	{org = "ballerinax", packageName = "amp", moduleName = "amp"}
+]
+
+[[package]]
+org = "ballerinax"
+name = "openai.chat"
+version = "5.0.0"
+dependencies = [
+	{org = "ballerina", name = "constraint"},
+	{org = "ballerina", name = "data.jsondata"},
+	{org = "ballerina", name = "http"},
+	{org = "ballerina", name = "log"},
+	{org = "ballerina", name = "os"},
+	{org = "ballerina", name = "url"},
+	{org = "ballerinai", name = "observe"}
+]
+
+[[package]]
+org = "ballerinax"
+name = "openai.embeddings"
+version = "1.0.6"
+dependencies = [
+	{org = "ballerina", name = "constraint"},
+	{org = "ballerina", name = "http"},
+	{org = "ballerina", name = "url"},
+	{org = "ballerinai", name = "observe"}
+]
+
+[[package]]
+org = "ballerinax"
+name = "openai.responses"
+version = "1.0.0"
+dependencies = [
+	{org = "ballerina", name = "constraint"},
+	{org = "ballerina", name = "data.jsondata"},
+	{org = "ballerina", name = "http"},
+	{org = "ballerina", name = "log"},
+	{org = "ballerina", name = "os"},
+	{org = "ballerina", name = "url"},
+	{org = "ballerinai", name = "observe"}
 ]
 

@@ -5,19 +5,24 @@
 // recordDocumentsReceived, decideClaim, escalateToAdjuster, and settleClaim.
 
 import ballerina/ai;
+import ballerinax/ai.openai;
 import ballerinax/amp as _;
 
 configurable string claimsToolsServerUrl = "http://localhost:9091/mcp";
 
-// Model provider settings are plain-string configurables rather than the
-// ai:getDefaultModelProvider() record, so Agent Manager can supply them at
-// deploy time via BAL_CONFIG_VAR_WSO2PROVIDERSERVICEURL /
-// BAL_CONFIG_VAR_WSO2PROVIDERACCESSTOKEN - BAL_CONFIG_VAR_* cannot populate
-// the fields of a record-typed configurable.
-configurable string wso2ProviderServiceUrl = ?;
-configurable string wso2ProviderAccessToken = ?;
+// The model is OpenAI reached with a plain API key, rather than the WSO2
+// provider: Agent Manager's egress gateway expects an OAuth2 client-credentials
+// token (AMP_AGENTID_*), which ai:Wso2ModelProvider has no way to obtain since
+// init() accepts only a static access token.
+//
+// All three settings are simple-typed configurables, so Agent Manager can
+// supply them at deploy time as BAL_CONFIG_VAR_OPENAIAPIKEY /
+// BAL_CONFIG_VAR_OPENAIMODEL / BAL_CONFIG_VAR_OPENAISERVICEURL.
+configurable string openAiApiKey = ?;
+configurable openai:OPEN_AI_MODEL_NAMES openAiModel = openai:GPT_4O_MINI;
+configurable string openAiServiceUrl = "https://api.openai.com/v1";
 
-final ai:Wso2ModelProvider claimsChatModel = check new (wso2ProviderServiceUrl, wso2ProviderAccessToken);
+final openai:ModelProvider claimsChatModel = check new (openAiApiKey, openAiModel, openAiServiceUrl);
 
 final ai:McpToolKit claimsToolKit = check new (claimsToolsServerUrl);
 
